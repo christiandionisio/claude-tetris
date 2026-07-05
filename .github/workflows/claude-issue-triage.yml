@@ -1,0 +1,90 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    # Skip if Claude already triaged this issue (prevents infinite loop when we edit the body)
+    if: ${{ !contains(github.event.issue.body, '<!-- claude-triage -->') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --allowedTools
+            "Bash(gh issue view *),Bash(gh issue edit *),Bash(gh issue comment *),Bash(gh label list *),Read(*)"
+          prompt: |
+            Eres un asistente de triage de issues para un proyecto Tetris en JavaScript (game.js, index.html, style.css).
+
+            Issue a analizar: #${{ github.event.issue.number }}
+
+            Sigue estos pasos en orden:
+
+            1. Lee el issue completo:
+               gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }}
+
+            2. Lee los archivos del repositorio que sean relevantes para entender el problema:
+               - game.js (lógica del juego)
+               - index.html (DOM y estructura)
+               - style.css (estilos)
+               Lee solo los que apliquen al problema reportado.
+
+            3. Obtén los labels disponibles:
+               gh label list --repo ${{ github.repository }}
+
+            4. Asigna los labels más apropiados del paso 3 (máximo 3 labels):
+               gh issue edit ${{ github.event.issue.number }} --repo ${{ github.repository }} --add-label "LABEL1,LABEL2"
+               Solo usa labels que existan en la lista obtenida en el paso 3.
+
+            5. Postea un comentario de diagnóstico estructurado:
+               gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "BODY"
+
+               El comentario debe tener esta estructura exacta:
+               ## 🔍 Diagnóstico de Claude
+
+               ### Resumen
+               [Descripción breve del problema en 1-2 oraciones]
+
+               ### Causa raíz probable
+               [Explicación técnica de qué parte del código es responsable, con referencias a archivos y funciones específicas, ej: `game.js:clearLines()`]
+
+               ### Archivos afectados
+               - `archivo.js` — motivo
+
+               ### Enfoque de solución propuesto
+               1. Paso 1
+               2. Paso 2
+               3. ...
+
+               ---
+               *Triage automático por Claude. Para solicitar implementación menciona @claude en un comentario.*
+
+            6. Edita el body del issue para añadir el diagnóstico al final.
+               IMPORTANTE: Conserva TODO el contenido original del body y agrega al final:
+
+               <!-- claude-triage -->
+               ---
+               ## Diagnóstico (Claude)
+               [El mismo resumen del comentario, 2-3 oraciones con causa raíz y archivos afectados]
+
+               Para obtener el body actual usa:
+               gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json body --jq '.body'
+
+               Luego edita con el body original + la sección nueva:
+               gh issue edit ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "BODY_COMPLETO"
