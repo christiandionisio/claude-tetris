@@ -14,6 +14,10 @@ const COLORS = [
   '#90caf9', // J - pale blue
   '#ffb74d', // L - orange
   '#b0bec5', // Tuerca - gris metálico
+  '#f06292', // + - rosa
+  '#4db6ac', // U - verde azulado
+  '#7986cb', // Y - índigo
+  '#ffd700', // single - dorado (premio Tetris)
 ];
 
 const PIECES = [
@@ -26,6 +30,10 @@ const PIECES = [
   [[6,0,0],[6,6,6],[0,0,0]],                  // J
   [[0,0,7],[7,7,7],[0,0,0]],                  // L
   [[8,8,8],[8,0,8],[8,8,8]],                  // Tuerca (hueco central)
+  [[0,9,0],[9,9,9],[0,9,0]],                  // + (pentominó plus)
+  [[10, 0,10],[10,10,10]],                    // U (pentominó U)
+  [[ 0,11],[11,11],[ 0,11],[ 0,11]],          // Y (pentominó Y)
+  [[12]],                                      // single 1×1 (premio Tetris)
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
@@ -43,7 +51,7 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, tetrisReward;
 
 function applyTheme(isLight) {
   document.body.classList.toggle('light-mode', isLight);
@@ -69,9 +77,19 @@ function createBoard() {
 }
 
 function randomPiece() {
-  const type = Math.floor(Math.random() * 8) + 1;
+  let type;
+  if (Math.random() < 0.12) {
+    type = 9 + Math.floor(Math.random() * 3); // 9,10,11 = +,U,Y (pentominós)
+  } else {
+    type = Math.floor(Math.random() * 8) + 1; // 1..8 clásicas + Tuerca
+  }
   const shape = PIECES[type].map(row => [...row]);
   return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
+}
+
+function singlePiece() {
+  const shape = PIECES[12].map(row => [...row]);
+  return { type: 12, shape, x: Math.floor(COLS / 2), y: 0 };
 }
 
 function collide(shape, ox, oy) {
@@ -126,6 +144,7 @@ function clearLines() {
     }
   }
   if (cleared) {
+    if (cleared === 4) tetrisReward = true;
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
@@ -165,7 +184,8 @@ function lockPiece() {
 
 function spawn() {
   current = next;
-  next = randomPiece();
+  next = tetrisReward ? singlePiece() : randomPiece();
+  tetrisReward = false;
   if (collide(current.shape, current.x, current.y)) {
     endGame();
   }
@@ -286,6 +306,7 @@ function init() {
   level = 1;
   paused = false;
   gameOver = false;
+  tetrisReward = false;
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
