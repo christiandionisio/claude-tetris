@@ -18,6 +18,7 @@ const COLORS = [
   '#4db6ac', // U - verde azulado
   '#7986cb', // Y - índigo
   '#ffd700', // single - dorado (premio Tetris)
+  '#ff6e40', // power-up - naranja brillante
 ];
 
 const PIECES = [
@@ -34,9 +35,15 @@ const PIECES = [
   [[10, 0,10],[10,10,10]],                    // U (pentominó U)
   [[ 0,11],[11,11],[ 0,11],[ 0,11]],          // Y (pentominó Y)
   [[12]],                                      // single 1×1 (premio Tetris)
+  [[13]],                                      // power-up 1×1
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
+
+const POWERUPS = ['bomb', 'ray', 'dye', 'gravity', 'freeze'];
+const POWERUP_LABELS = { bomb: 'BOMBA', ray: 'RAYO', dye: 'TINTE', gravity: 'GRAVEDAD', freeze: 'CONGELAR' };
+const POWERUP_COLOR = '#ff6e40';
+const POWERUP_LINES = 8;
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
@@ -50,8 +57,10 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
+const powerupEl = document.getElementById('powerup');
+const freezeTimerEl = document.getElementById('freeze-timer');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, tetrisReward;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, tetrisReward, powerupPending, frozenUntil;
 
 function applyTheme(isLight) {
   document.body.classList.toggle('light-mode', isLight);
@@ -90,6 +99,11 @@ function randomPiece() {
 function singlePiece() {
   const shape = PIECES[12].map(row => [...row]);
   return { type: 12, shape, x: Math.floor(COLS / 2), y: 0 };
+}
+
+function powerupPiece(kind) {
+  const shape = PIECES[13].map(row => [...row]);
+  return { type: 13, shape, x: Math.floor(COLS / 2), y: 0, power: kind };
 }
 
 function collide(shape, ox, oy) {
@@ -133,6 +147,40 @@ function merge() {
         board[current.y + r][current.x + c] = current.shape[r][c];
 }
 
+function applyPowerup(kind, x, y) {
+  board[y][x] = 0;
+  if (kind === 'bomb') {
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const ny = y + dy, nx = x + dx;
+        if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) board[ny][nx] = 0;
+      }
+  } else if (kind === 'ray') {
+    for (let c = 0; c < COLS; c++) board[y][c] = 0;
+    for (let r = 0; r < ROWS; r++) board[r][x] = 0;
+  } else if (kind === 'dye') {
+    const colors = new Set();
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (board[r][c]) colors.add(board[r][c]);
+    if (!colors.size) return;
+    const colorArr = [...colors];
+    const target = colorArr[Math.floor(Math.random() * colorArr.length)];
+    for (let r = 0; r < ROWS; r++)
+      for (let c = 0; c < COLS; c++)
+        if (board[r][c] === target) board[r][c] = 0;
+  } else if (kind === 'gravity') {
+    for (let c = 0; c < COLS; c++) {
+      const cells = [];
+      for (let r = 0; r < ROWS; r++) if (board[r][c]) cells.push(board[r][c]);
+      for (let r = 0; r < ROWS; r++) board[r][c] = 0;
+      for (let i = 0; i < cells.length; i++) board[ROWS - cells.length + i][c] = cells[i];
+    }
+  } else if (kind === 'freeze') {
+    frozenUntil = performance.now() + 5000;
+  }
+}
+
 function clearLines() {
   let cleared = 0;
   for (let r = ROWS - 1; r >= 0; r--) {
@@ -145,7 +193,9 @@ function clearLines() {
   }
   if (cleared) {
     if (cleared === 4) tetrisReward = true;
+    const prevLines = lines;
     lines += cleared;
+    if (Math.floor(lines / POWERUP_LINES) > Math.floor(prevLines / POWERUP_LINES)) powerupPending = true;
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
@@ -178,24 +228,42 @@ function softDrop() {
 
 function lockPiece() {
   merge();
+  if (current.power) applyPowerup(current.power, current.x, current.y);
   clearLines();
   spawn();
 }
 
 function spawn() {
   current = next;
-  next = tetrisReward ? singlePiece() : randomPiece();
-  tetrisReward = false;
+  if (tetrisReward) {
+    next = singlePiece();
+    tetrisReward = false;
+  } else if (powerupPending) {
+    next = powerupPiece(POWERUPS[Math.floor(Math.random() * POWERUPS.length)]);
+    powerupPending = false;
+  } else {
+    next = randomPiece();
+  }
   if (collide(current.shape, current.x, current.y)) {
     endGame();
   }
   drawNext();
+  updateHUD();
 }
 
 function updateHUD() {
   scoreEl.textContent = score.toLocaleString();
   linesEl.textContent = lines;
   levelEl.textContent = level;
+  powerupEl.textContent = (next && next.power) ? POWERUP_LABELS[next.power] : '—';
+  const remaining = frozenUntil - performance.now();
+  if (remaining > 0) {
+    freezeTimerEl.textContent = Math.ceil(remaining / 1000) + 's';
+    freezeTimerEl.style.display = '';
+  } else {
+    freezeTimerEl.textContent = '';
+    freezeTimerEl.style.display = 'none';
+  }
 }
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
@@ -247,6 +315,17 @@ function draw() {
   for (let r = 0; r < current.shape.length; r++)
     for (let c = 0; c < current.shape[r].length; c++)
       drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+
+  if (current.power) {
+    const initials = { bomb: 'B', ray: 'R', dye: 'T', gravity: 'G', freeze: 'C' };
+    ctx.font = `bold ${BLOCK - 8}px Courier New`;
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(initials[current.power], (current.x + 0.5) * BLOCK, (current.y + 0.5) * BLOCK);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
 }
 
 function drawNext() {
@@ -258,6 +337,13 @@ function drawNext() {
   for (let r = 0; r < shape.length; r++)
     for (let c = 0; c < shape[r].length; c++)
       drawBlock(nextCtx, offX + c, offY + r, shape[r][c], NB);
+  if (next.power) {
+    nextCtx.font = 'bold 11px Courier New';
+    nextCtx.fillStyle = POWERUP_COLOR;
+    nextCtx.textAlign = 'center';
+    nextCtx.fillText(POWERUP_LABELS[next.power], nextCanvas.width / 2, nextCanvas.height - 6);
+    nextCtx.textAlign = 'left';
+  }
 }
 
 function endGame() {
@@ -286,13 +372,18 @@ function loop(ts) {
   if (gameOver || paused) return;
   const dt = ts - lastTime;
   lastTime = ts;
-  dropAccum += dt;
-  if (dropAccum >= dropInterval) {
-    dropAccum = 0;
-    if (!collide(current.shape, current.x, current.y + 1)) {
-      current.y++;
-    } else {
-      lockPiece();
+  if (frozenUntil > 0 && ts < frozenUntil) {
+    updateHUD(); // tick freeze timer
+  } else {
+    if (frozenUntil > 0) { frozenUntil = 0; updateHUD(); }
+    dropAccum += dt;
+    if (dropAccum >= dropInterval) {
+      dropAccum = 0;
+      if (!collide(current.shape, current.x, current.y + 1)) {
+        current.y++;
+      } else {
+        lockPiece();
+      }
     }
   }
   draw();
@@ -307,6 +398,8 @@ function init() {
   paused = false;
   gameOver = false;
   tetrisReward = false;
+  powerupPending = false;
+  frozenUntil = 0;
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
