@@ -21,6 +21,13 @@ const COLORS = [
   '#ff6e40', // power-up - naranja brillante
 ];
 
+const SKIN_COLORS = {
+  retro:  COLORS,
+  neon:   [null,'#00fff5','#ffe600','#dd00ff','#00ff88','#ff0044','#0088ff','#ff8800','#aabbcc','#ff00aa','#00ffcc','#8844ff','#ffdd00','#ff5500'],
+  pastel: [null,'#b2ebf2','#fff9c4','#e1bee7','#c8e6c9','#ffcdd2','#bbdefb','#ffe0b2','#cfd8dc','#f8bbd9','#b2dfdb','#c5cae9','#fff8e1','#ffccbc'],
+  pixel:  COLORS,
+};
+
 const PIECES = [
   null,
   [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], // I
@@ -59,8 +66,9 @@ const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
 const powerupEl = document.getElementById('powerup');
 const freezeTimerEl = document.getElementById('freeze-timer');
+const skinSelect = document.getElementById('skin-select');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, tetrisReward, powerupPending, frozenUntil;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, tetrisReward, powerupPending, frozenUntil, skin;
 
 function applyTheme(isLight) {
   document.body.classList.toggle('light-mode', isLight);
@@ -77,6 +85,25 @@ themeToggle.addEventListener('change', () => {
   const isLight = themeToggle.checked;
   applyTheme(isLight);
   localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  if (current) draw();
+  if (next) drawNext();
+});
+
+skin = localStorage.getItem('tetris-skin') || 'retro';
+
+function applySkinClass() {
+  document.body.classList.toggle('skin-neon', skin === 'neon');
+  document.body.classList.toggle('skin-pastel', skin === 'pastel');
+  document.body.classList.toggle('skin-pixel', skin === 'pixel');
+}
+
+skinSelect.value = skin;
+skin = skinSelect.value; // normalize: if stored value not in select options, falls back to first option
+applySkinClass();
+skinSelect.addEventListener('change', () => {
+  skin = skinSelect.value;
+  localStorage.setItem('tetris-skin', skin);
+  applySkinClass();
   if (current) draw();
   if (next) drawNext();
 });
@@ -268,13 +295,48 @@ function updateHUD() {
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
+  const color = SKIN_COLORS[skin][colorIndex];
   context.globalAlpha = alpha ?? 1;
-  context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  // highlight
-  context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+
+  if (skin === 'neon') {
+    context.shadowColor = color;
+    context.shadowBlur = 12;
+    context.fillStyle = color;
+    context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+    context.shadowBlur = 0;
+    context.shadowColor = 'transparent';
+  } else if (skin === 'pastel') {
+    context.fillStyle = color;
+    if (context.roundRect) {
+      context.beginPath();
+      context.roundRect(x * size + 2, y * size + 2, size - 4, size - 4, 6);
+      context.fill();
+    } else {
+      context.fillRect(x * size + 2, y * size + 2, size - 4, size - 4);
+    }
+  } else if (skin === 'pixel') {
+    context.fillStyle = color;
+    context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+    // pixel pattern: 4x4 grid of dark dots
+    context.fillStyle = 'rgba(0,0,0,0.25)';
+    const step = (size - 2) / 4;
+    for (let pr = 0; pr < 4; pr++) {
+      for (let pc = 0; pc < 4; pc++) {
+        context.fillRect(
+          x * size + 1 + pc * step + step * 0.25,
+          y * size + 1 + pr * step + step * 0.25,
+          step * 0.5, step * 0.5
+        );
+      }
+    }
+  } else {
+    // retro (default)
+    context.fillStyle = color;
+    context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+    context.fillStyle = 'rgba(255,255,255,0.12)';
+    context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  }
+
   context.globalAlpha = 1;
 }
 
