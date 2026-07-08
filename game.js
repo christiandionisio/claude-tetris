@@ -55,12 +55,12 @@ const levelEl = document.getElementById('level');
 const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
-const restartBtn = document.getElementById('restart-btn');
+const menuButtons = document.getElementById('menu-buttons');
 const themeToggle = document.getElementById('theme-toggle');
 const powerupEl = document.getElementById('powerup');
 const freezeTimerEl = document.getElementById('freeze-timer');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, tetrisReward, powerupPending, frozenUntil;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, tetrisReward, powerupPending, frozenUntil, combo, maxCombo, maxLinesCleared;
 
 function applyTheme(isLight) {
   document.body.classList.toggle('light-mode', isLight);
@@ -80,6 +80,46 @@ themeToggle.addEventListener('change', () => {
   if (current) draw();
   if (next) drawNext();
 });
+
+const HS_KEY = 'tetris-highscores';
+
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem(HS_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveScores(arr) {
+  localStorage.setItem(HS_KEY, JSON.stringify(arr));
+}
+
+function isTopScore(s) {
+  const scores = loadScores();
+  return scores.length < 5 || s > (scores[scores.length - 1]?.score ?? 0);
+}
+
+function addScore(name, s, cmb, linesMax) {
+  const scores = loadScores();
+  scores.push({ name, score: s, combo: cmb, linesMax });
+  scores.sort((a, b) => b.score - a.score);
+  scores.splice(5);
+  saveScores(scores);
+  return scores;
+}
+
+function resetScores() {
+  localStorage.removeItem(HS_KEY);
+}
+
+function renderScoresTable(scores, highlightScore) {
+  if (!scores.length) {
+    return '<div class="hs-table-wrap"><p class="hs-empty">Sin récords aún</p></div>';
+  }
+  const rows = scores.map((e, i) => {
+    const cls = (highlightScore !== undefined && e.score === highlightScore) ? ' class="hs-highlight"' : '';
+    return `<tr${cls}><td>${i + 1}</td><td>${e.name}</td><td>${e.score.toLocaleString()}</td><td>${e.combo}</td><td>${e.linesMax}</td></tr>`;
+  }).join('');
+  return `<div class="hs-table-wrap"><p class="hs-title">RÉCORDS</p><table class="hs-table"><thead><tr><th>#</th><th>Nombre</th><th>Score</th><th>Combo</th><th>Líneas</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -193,6 +233,9 @@ function clearLines() {
   }
   if (cleared) {
     if (cleared === 4) tetrisReward = true;
+    combo++;
+    if (combo > maxCombo) maxCombo = combo;
+    if (cleared > maxLinesCleared) maxLinesCleared = cleared;
     const prevLines = lines;
     lines += cleared;
     if (Math.floor(lines / POWERUP_LINES) > Math.floor(prevLines / POWERUP_LINES)) powerupPending = true;
@@ -200,6 +243,8 @@ function clearLines() {
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
+  } else {
+    combo = 0;
   }
 }
 
@@ -346,11 +391,29 @@ function drawNext() {
   }
 }
 
-function endGame() {
+function endGame(win) {
   gameOver = true;
   cancelAnimationFrame(animId);
-  overlayTitle.textContent = 'GAME OVER';
-  overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  overlayTitle.textContent = win ? '¡GANASTE!' : 'GAME OVER';
+
+  let scoreHtml = `<div class="hs-score-line">Puntuación: ${score.toLocaleString()}</div>`;
+
+  if (!win && isTopScore(score)) {
+    scoreHtml += `<div class="name-entry"><input type="text" id="score-name" maxlength="12" placeholder="Tu nombre"><button id="save-score-btn" class="menu-btn">GUARDAR</button></div>`;
+    scoreHtml += renderScoresTable(loadScores());
+    overlayScore.innerHTML = scoreHtml;
+    document.getElementById('save-score-btn').addEventListener('click', () => {
+      const name = document.getElementById('score-name')?.value.trim() || 'Anónimo';
+      const scores = addScore(name, score, maxCombo, maxLinesCleared);
+      overlayScore.innerHTML = `<div class="hs-score-line">Puntuación: ${score.toLocaleString()}</div>` + renderScoresTable(scores, score);
+    });
+  } else {
+    scoreHtml += renderScoresTable(loadScores());
+    overlayScore.innerHTML = scoreHtml;
+  }
+
+  menuButtons.innerHTML = '<button id="restart-btn" class="menu-btn">REINICIAR</button>';
+  document.getElementById('restart-btn').addEventListener('click', init);
   overlay.classList.remove('hidden');
 }
 
@@ -358,12 +421,15 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    overlay.classList.add('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
+    overlayScore.innerHTML = '';
+    menuButtons.innerHTML = '<button id="restart-btn" class="menu-btn">REINICIAR</button>';
+    document.getElementById('restart-btn').addEventListener('click', init);
     overlay.classList.remove('hidden');
   }
 }
@@ -400,6 +466,9 @@ function init() {
   tetrisReward = false;
   powerupPending = false;
   frozenUntil = 0;
+  combo = 0;
+  maxCombo = 0;
+  maxLinesCleared = 0;
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
@@ -436,6 +505,22 @@ document.addEventListener('keydown', e => {
   updateHUD();
 });
 
-restartBtn.addEventListener('click', init);
+function showMenu() {
+  overlayTitle.textContent = 'TETRIS';
+  overlayScore.innerHTML = renderScoresTable(loadScores());
+  menuButtons.innerHTML = `
+    <button id="play-btn" class="menu-btn">JUGAR</button>
+    <button id="reset-scores-btn" class="menu-btn hs-reset-btn">RESETEAR RÉCORDS</button>
+  `;
+  overlay.classList.remove('hidden');
+  document.getElementById('play-btn').addEventListener('click', init);
+  document.getElementById('reset-scores-btn').addEventListener('click', () => {
+    resetScores();
+    overlayScore.innerHTML = renderScoresTable([]);
+  });
+}
 
-init();
+// Guard keyboard events before the game starts
+paused = false;
+gameOver = true;
+showMenu();
