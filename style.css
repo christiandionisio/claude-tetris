@@ -272,3 +272,87 @@ kbd {
 #restart-btn:hover {
   background: var(--restart-hover);
 }
+
+/* ---- Pause menu buttons ---- */
+#menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+
+.menu-btn {
+  background: var(--restart-bg);
+  color: var(--restart-text);
+  border: none;
+  border-radius: 6px;
+  padding: 9px 24px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 1px;
+  cursor: pointer;
+  width: 180px;
+  transition: background 0.15s;
+}
+
+.menu-btn:hover {
+  background: var(--restart-hover);
+}
+
+/* ---- Controls list inside overlay ---- */
+.overlay-controls {
+  list-style: none;
+  font-size: 12px;
+  color: var(--control-text);
+  text-align: left;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 6px;
+  width: 180px;
+}
+
+.overlay-controls li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- Level selector ---- */
+.level-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  max-width: 200px;
+  margin-top: 4px;
+}
+
+.level-btn {
+  background: var(--kbd-bg);
+  color: var(--text);
+  border: 1px solid var(--kbd-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  cursor: pointer;
+  min-width: 30px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.level-btn:hover {
+  background: var(--restart-bg);
+  color: var(--restart-text);
+}
+
+.level-btn.active {
+  background: var(--restart-bg);
+  color: var(--restart-text);
+  font-weight: 700;
+}
